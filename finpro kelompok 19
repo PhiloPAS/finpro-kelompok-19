@@ -1,0 +1,243 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <omp.h>
+
+typedef struct Kursi {
+    int nomor;
+    int tersedia;
+} Kursi;
+
+typedef struct Jadwal {
+    char film[50];
+    char waktu[20];
+    int popularitas;
+    Kursi *kursi;
+    int jumlah_kursi;
+} Jadwal;
+
+typedef struct Booking {
+    char film[50];
+    int kursi_nomor;
+} Booking;
+
+void tambah_jadwal(Jadwal **jadwals, int *jumlah_jadwal, char *film, char *waktu, int popularitas, int jumlah_kursi);
+void tampilkan_jadwal(Jadwal *jadwals, int jumlah_jadwal);
+void simpan_jadwal_ke_file(Jadwal *jadwals, int jumlah_jadwal, char *filename);
+void baca_jadwal_dari_file(Jadwal **jadwals, int *jumlah_jadwal, char *filename);
+int cari_jadwal_berdasarkan_film(Jadwal *jadwals, int jumlah_jadwal, char *film);
+void pesan_tiket(Jadwal *jadwals, int jumlah_jadwal, char *film, int kursi_nomor, Booking **bookings, int *jumlah_booking);
+void sorting_jadwal_berdasarkan_waktu(Jadwal *jadwals, int jumlah_jadwal);
+void sorting_jadwal_berdasarkan_popularitas(Jadwal *jadwals, int jumlah_jadwal);
+void tampilkan_bookings(Booking *bookings, int jumlah_booking);
+void error_handling(char *pesan);
+
+void tampilkan_menu();
+
+int main() {
+    Jadwal *jadwals = NULL;
+    int jumlah_jadwal = 0;
+    Booking *bookings = NULL;
+    int jumlah_booking = 0;
+    char filename[] = "jadwal_bioskop.txt";
+
+    // Baca jadwal dari file
+    baca_jadwal_dari_file(&jadwals, &jumlah_jadwal, filename);
+
+    // Menu utama
+    int pilihan;
+    do {
+        tampilkan_menu();
+        printf("Pilihan: ");
+        scanf("%d", &pilihan);
+
+        switch (pilihan) {
+            case 1: {
+                char film[50], waktu[20];
+                int popularitas, jumlah_kursi;
+                printf("Masukkan nama film: ");
+                scanf(" %[^\n]", film);
+                printf("Masukkan waktu tayang (HH:MM): ");
+                scanf(" %[^\n]", waktu);
+                printf("Masukkan popularitas (1-10): ");
+                scanf("%d", &popularitas);
+                printf("Masukkan jumlah kursi: ");
+                scanf("%d", &jumlah_kursi);
+                tambah_jadwal(&jadwals, &jumlah_jadwal, film, waktu, popularitas, jumlah_kursi);
+                break;
+            }
+            case 2:
+                tampilkan_jadwal(jadwals, jumlah_jadwal);
+                break;
+            case 3: {
+                char film[50];
+                int kursi_nomor;
+                printf("Masukkan nama film: ");
+                scanf(" %[^\n]", film);
+                printf("Masukkan nomor kursi: ");
+                scanf("%d", &kursi_nomor);
+                pesan_tiket(jadwals, jumlah_jadwal, film, kursi_nomor, &bookings, &jumlah_booking);
+                break;
+            }
+            case 4:
+                tampilkan_bookings(bookings, jumlah_booking);
+                break;
+            case 5:
+                simpan_jadwal_ke_file(jadwals, jumlah_jadwal, filename);
+                break;
+            default:
+                error_handling("Pilihan tidak valid!");
+        }
+    } while (pilihan != 5);
+
+    // Bersihkan memori
+    for (int i = 0; i < jumlah_jadwal; i++) {
+        free(jadwals[i].kursi);
+    }
+    free(jadwals);
+    free(bookings);
+
+    return 0;
+}
+
+void tambah_jadwal(Jadwal **jadwals, int *jumlah_jadwal, char *film, char *waktu, int popularitas, int jumlah_kursi) {
+    *jadwals = realloc(*jadwals, (*jumlah_jadwal + 1) * sizeof(Jadwal));
+    strcpy((*jadwals)[*jumlah_jadwal].film, film);
+    strcpy((*jadwals)[*jumlah_jadwal].waktu, waktu);
+    (*jadwals)[*jumlah_jadwal].popularitas = popularitas;
+    (*jadwals)[*jumlah_jadwal].jumlah_kursi = jumlah_kursi;
+    (*jadwals)[*jumlah_jadwal].kursi = malloc(jumlah_kursi * sizeof(Kursi));
+    for (int i = 0; i < jumlah_kursi; i++) {
+        (*jadwals)[*jumlah_jadwal].kursi[i].nomor = i + 1;
+        (*jadwals)[*jumlah_jadwal].kursi[i].tersedia = 1;
+    }
+    (*jumlah_jadwal)++;
+}
+
+void tampilkan_jadwal(Jadwal *jadwals, int jumlah_jadwal) {
+    for (int i = 0; i < jumlah_jadwal; i++) {
+        printf("Film: %s\n", jadwals[i].film);
+        printf("Waktu: %s\n", jadwals[i].waktu);
+        printf("Popularitas: %d\n", jadwals[i].popularitas);
+        printf("Kursi tersedia: ");
+        for (int j = 0; j < jadwals[i].jumlah_kursi; j++) {
+            if (jadwals[i].kursi[j].tersedia) {
+                printf("%d ", jadwals[i].kursi[j].nomor);
+            }
+        }
+        printf("\n\n");
+    }
+}
+
+void simpan_jadwal_ke_file(Jadwal *jadwals, int jumlah_jadwal, char *filename) {
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        error_handling("Gagal membuka file!");
+        return;
+    }
+    for (int i = 0; i < jumlah_jadwal; i++) {
+        fprintf(file, "%s,%s,%d,%d\n", jadwals[i].film, jadwals[i].waktu, jadwals[i].popularitas, jadwals[i].jumlah_kursi);
+        for (int j = 0; j < jadwals[i].jumlah_kursi; j++) {
+            fprintf(file, "%d,%d\n", jadwals[i].kursi[j].nomor, jadwals[i].kursi[j].tersedia);
+        }
+    }
+    fclose(file);
+}
+
+void baca_jadwal_dari_file(Jadwal **jadwals, int *jumlah_jadwal, char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        error_handling("Gagal membuka file!");
+        return;
+    }
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        char film[50], waktu[20];
+        int popularitas, jumlah_kursi;
+        sscanf(line, "%[^,],%[^,],%d,%d", film, waktu, &popularitas, &jumlah_kursi);
+        tambah_jadwal(jadwals, jumlah_jadwal, film, waktu, popularitas, jumlah_kursi);
+        for (int i = 0; i < jumlah_kursi; i++) {
+            int nomor, tersedia;
+            fgets(line, sizeof(line), file);
+            sscanf(line, "%d,%d", &nomor, &tersedia);
+            (*jadwals)[*jumlah_jadwal - 1].kursi[i].nomor = nomor;
+            (*jadwals)[*jumlah_jadwal - 1].kursi[i].tersedia = tersedia;
+        }
+    }
+    fclose(file);
+}
+
+int cari_jadwal_berdasarkan_film(Jadwal *jadwals, int jumlah_jadwal, char *film) {
+    for (int i = 0; i < jumlah_jadwal; i++) {
+        if (strcmp(jadwals[i].film, film) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void pesan_tiket(Jadwal *jadwals, int jumlah_jadwal, char *film, int kursi_nomor, Booking **bookings, int *jumlah_booking) {
+    int idx = cari_jadwal_berdasarkan_film(jadwals, jumlah_jadwal, film);
+    if (idx == -1) {
+        error_handling("Film tidak ditemukan!");
+        return;
+    }
+    if (kursi_nomor < 1 || kursi_nomor > jadwals[idx].jumlah_kursi || !jadwals[idx].kursi[kursi_nomor - 1].tersedia) {
+        error_handling("Kursi tidak tersedia!");
+        return;
+    }
+    jadwals[idx].kursi[kursi_nomor - 1].tersedia = 0;
+    *bookings = realloc(*bookings, (*jumlah_booking + 1) * sizeof(Booking));
+    strcpy((*bookings)[*jumlah_booking].film, film);
+    (*bookings)[*jumlah_booking].kursi_nomor = kursi_nomor;
+    (*jumlah_booking)++;
+    printf("Tiket berhasil dipesan!\n");
+}
+
+void sorting_jadwal_berdasarkan_waktu(Jadwal *jadwals, int jumlah_jadwal) {
+    #pragma omp parallel for
+    for (int i = 0; i < jumlah_jadwal - 1; i++) {
+        for (int j = i + 1; j < jumlah_jadwal; j++) {
+            if (strcmp(jadwals[i].waktu, jadwals[j].waktu) > 0) {
+                Jadwal temp = jadwals[i];
+                jadwals[i] = jadwals[j];
+                jadwals[j] = temp;
+            }
+        }
+    }
+}
+
+void sorting_jadwal_berdasarkan_popularitas(Jadwal *jadwals, int jumlah_jadwal) {
+    #pragma omp parallel for
+    for (int i = 0; i < jumlah_jadwal - 1; i++) {
+        for (int j = i + 1; j < jumlah_jadwal; j++) {
+            if (jadwals[i].popularitas < jadwals[j].popularitas) {
+                Jadwal temp = jadwals[i];
+                jadwals[i] = jadwals[j];
+                jadwals[j] = temp;
+            }
+        }
+    }
+}
+
+void tampilkan_bookings(Booking *bookings, int jumlah_booking) {
+    for (int i = 0; i < jumlah_booking; i++) {
+        printf("Film: %s, Kursi: %d\n", bookings[i].film, bookings[i].kursi_nomor);
+    }
+}
+
+void error_handling(char *pesan) {
+    printf("Error: %s\n", pesan);
+}
+
+void tampilkan_menu() {
+    printf("|---------------------------------------|\n");
+    printf("|         Aplikasi Pemesanan Tiket      |\n");
+    printf("|---------------------------------------|\n");
+    printf("| 1. Tambah Jadwal                      |\n");
+    printf("| 2. Tampilkan Jadwal                   |\n");
+    printf("| 3. Pesan Tiket                        |\n");
+    printf("| 4. Tampilkan Booking                  |\n");
+    printf("| 5. Simpan dan Keluar                  |\n");
+    printf("|---------------------------------------|\n");
+}
